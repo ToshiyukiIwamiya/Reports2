@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>就業報告書 入力システム - 公益社団法人 町田市シルバー人材センター</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2pdf.js CDN for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans JP', 'Inter', sans-serif;
+            background-color: #e5e7eb;
+            color: #000;
+        }
+        /* A4 Paper Styling */
+        .a4-paper {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background: #ffffff;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            box-sizing: border-box;
+            position: relative;
+        }
+        @media print {
+            body {
+                background: none;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .a4-paper {
+                box-shadow: none;
+                margin: 0;
+                width: 100%;
+                min-height: auto;
+            }
+        }
+        /* Custom Table & Form Borders for Formal Look */
+        .formal-table th, .formal-table td {
+            border: 1px solid #000;
+            padding: 2px 4px;
+            font-size: 11px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .formal-input {
+            width: 100%;
+            border: none;
+            outline: none;
+            text-align: center;
+            background: transparent;
+            font-size: 11px;
+        }
+        .formal-input:focus {
+            background-color: #fef08a;
+        }
+        .disabled-row {
+            background-color: #f3f4f6 !important;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body class="py-6 px-2">
+
+    <!-- Control Buttons Area (Outside A4, hidden on print) -->
+    <div class="max-w-[210mm] mx-auto mb-6 bg-white p-4 rounded-xl shadow-md flex flex-wrap items-center justify-between gap-3 no-print">
+        <div class="flex flex-wrap items-center gap-2">
+            <h1 class="font-bold text-gray-800 text-base">就業報告書システム</h1>
+            <label class="flex items-center gap-1.5 text-xs bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 cursor-pointer font-medium text-amber-900">
+                <input type="checkbox" id="lockFlagCheckbox" class="rounded accent-amber-600 w-4 h-4">
+                <span>会員用に項目名と単位をロックする</span>
+            </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <!-- Voice Input Button -->
+            <button id="voiceBtn" onclick="toggleVoiceInput()" class="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow">
+                <svg id="micIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                <span id="voiceBtnText">音声入力</span>
+            </button>
+            <!-- JSON Import -->
+            <label class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border border-gray-300 transition">
+                読込
+                <input type="file" id="importFile" accept=".json" class="hidden" onchange="importJSON(event)">
+            </label>
+            <!-- JSON Export -->
+            <button onclick="exportJSON()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 transition">保存</button>
+            <!-- Clear Storage -->
+            <button onclick="clearLocalStorage()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 transition">クリア</button>
+            <!-- Print -->
+            <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition shadow">印刷</button>
+            <!-- PDF Export -->
+            <button onclick="exportPDF()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow">PDF保存</button>
+        </div>
+    </div>
+
+    <!-- Voice Feedback Toast -->
+    <div id="voiceToast" class="max-w-[210mm] mx-auto mb-4 hidden bg-blue-50 border border-blue-300 text-blue-900 px-4 py-2 rounded-lg text-xs font-medium shadow flex items-center justify-between no-print">
+        <span id="voiceStatusText">マイク準備完了...</span>
+        <span id="voiceTranscript" class="italic text-gray-600"></span>
+    </div>
+
+    <!-- A4 Paper Container -->
+    <div id="reportPaper" class="a4-paper p-6 text-[11px] leading-tight flex flex-col justify-between">
+        
+        <div>
+            <!-- Header Section -->
+            <div class="flex justify-between items-start border-b-2 border-black pb-2 mb-2">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-xl font-bold tracking-wider">就業報告書</h2>
+                    <span class="bg-black text-white px-2 py-0.5 text-xs font-bold tracking-widest">提出用</span>
+                </div>
+                <div class="flex items-center gap-1 font-bold text-sm">
+                    <input type="number" id="reportYear" value="2026" class="w-12 text-right border-b border-black formal-input font-bold" min="2000" max="2100"> 年 
+                    <select id="reportMonth" onchange="updateDaysInMonth()" class="border-b border-black font-bold outline-none bg-transparent text-sm px-1">
+                        <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                        <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                        <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                        <option value="10">10</option><option value="11">11</option><option value="12" selected>12</option>
+                    </select> 月分
+                </div>
+            </div>
+
+            <!-- Main Top Grid: Work Content & Contract Info -->
+            <div class="grid grid-cols-12 gap-2 mb-2">
+                <!-- Work Content / Notes -->
+                <div class="col-span-7 border border-black p-1.5 flex flex-col">
+                    <div class="font-bold text-[10px] mb-1">【仕事の内容／連絡事項／申し送り事項】</div>
+                    <textarea id="workContent" class="w-full h-32 resize-none outline-none text-[11px] p-1 bg-transparent" placeholder="ここに仕事の内容や連絡事項をご記入ください。音声入力も可能です。"></textarea>
+                </div>
+                <!-- Contract Info -->
+                <div class="col-span-5 border border-black p-1.5 flex flex-col justify-between text-[11px]">
+                    <div class="space-y-1">
+                        <div class="flex items-center border-b border-gray-400 pb-0.5">
+                            <span class="w-20 text-gray-700 font-medium shrink-0">契約件名：</span>
+                            <input type="text" id="contractName" class="formal-input text-left font-medium" placeholder="例：〇〇業務委託">
+                        </div>
+                        <div class="flex items-center border-b border-gray-400 pb-0.5">
+                            <span class="w-20 text-gray-700 font-medium shrink-0">契約番号：</span>
+                            <input type="text" id="contractNo" class="formal-input text-left" placeholder="例：A-1234">
+                        </div>
+                        <div class="flex items-center border-b border-gray-400 pb-0.5">
+                            <span class="w-20 text-gray-700 font-medium shrink-0">発注者名：</span>
+                            <div class="flex w-full items-center"><input type="text" id="clientName" class="formal-input text-left" placeholder="〇〇株式会社"><span class="ml-1">様</span></div>
+                        </div>
+                        <div class="flex items-center border-b border-gray-400 pb-0.5">
+                            <span class="w-20 text-gray-700 font-medium shrink-0">会員番号：</span>
+                            <input type="text" id="memberNo" class="formal-input text-left" placeholder="例：12345">
+                        </div>
+                        <div class="flex items-center">
+                            <span class="w-20 text-gray-700 font-medium shrink-0">会員氏名：</span>
+                            <input type="text" id="memberName" class="formal-input text-left font-bold" placeholder="山田 太郎">
+                        </div>
+                    </div>
+                    <div class="text-[9px] text-right text-gray-500 mt-1">業務委託</div>
+                </div>
+            </div>
+
+            <!-- Schedule Grid (Left: 1-16, Right: 17-31 + Totals) -->
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <!-- Left Column (1-16) -->
+                <div>
+                    <table class="w-full formal-table">
+                        <thead>
+                            <tr class="bg-gray-100 font-bold">
+                                <th class="w-8">日</th>
+                                <th class="w-8">曜</th>
+                                <th class="editable-header" contenteditable="true" id="th_colA_1">開始時間</th>
+                                <th class="editable-header" contenteditable="true" id="th_colB_1">終了時間</th>
+                                <th class="editable-header" contenteditable="true" id="th_colC_1">経過時間</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleBodyLeft">
+                            <!-- Generated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Right Column (17-31 + Summary Row) -->
+                <div>
+                    <table class="w-full formal-table">
+                        <thead>
+                            <tr class="bg-gray-100 font-bold">
+                                <th class="w-8">日</th>
+                                <th class="w-8">曜</th>
+                                <th class="editable-header" contenteditable="true" id="th_colA_2">開始時間</th>
+                                <th class="editable-header" contenteditable="true" id="th_colB_2">終了時間</th>
+                                <th class="editable-header" contenteditable="true" id="th_colC_2">経過時間</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleBodyRight">
+                            <!-- Generated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Bottom Section: Office Use & Calculation Area -->
+            <div class="grid grid-cols-12 gap-2 border border-black p-2 bg-white">
+                <!-- Left: Office Note & Sign -->
+                <div class="col-span-6 flex flex-col justify-between border-r border-black pr-2">
+                    <div>
+                        <div class="font-bold text-[10px] mb-1">【事務局記入欄】</div>
+                        <div class="text-[10px] text-gray-700 leading-relaxed mb-2">
+                            貴センターに発注した仕事が履行されたことを確認いたします。
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-end border-t border-dashed border-gray-400 pt-2">
+                        <div class="text-[9px] text-gray-600 leading-tight">
+                            <span class="font-bold text-black">公益社団法人 町田市シルバー人材センター</span><br>
+                            〒194-0022 東京都町田市森野1-1-15<br>
+                            電話 042-723-2147 FAX 042-724-0407<br>
+                            提出専用メールアドレス: houkoku@machida-sjc.or.jp
+                        </div>
+                        <div class="border border-black w-20 h-14 flex items-center justify-center text-[10px] text-gray-400 shrink-0">
+                            印またはサイン
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Calculation Area -->
+                <div class="col-span-6 flex flex-col justify-between pl-1 text-[11px]">
+                    <div class="space-y-1">
+                        <!-- Summary Row Header -->
+                        <div class="flex justify-between items-center bg-gray-50 p-1 border border-black">
+                            <span class="font-bold">合 計</span>
+                            <div class="flex items-center gap-4">
+                                <span>日数: <strong id="totalDays">0</strong> 日</span>
+                                <span>時間合計: <strong id="totalHours">0.00</strong> 時間</span>
+                            </div>
+                        </div>
+
+                        <!-- Fee Item 1 -->
+                        <div class="flex items-center justify-between gap-1">
+                            <div class="flex items-center gap-1 w-1/2">
+                                <input type="text" id="unit1Name" list="units" class="border border-gray-400 px-1 py-0.5 rounded text-center w-16 text-[10px] unit-input" value="時間">
+                                <span class="text-xs">×</span>
+                                <input type="number" id="unitPrice1" oninput="calculateFees()" class="border border-gray-400 px-1 py-0.5 rounded text-right w-16 formal-input font-medium" placeholder="単価">
+                                <span class="text-xs">円</span>
+                            </div>
+                            <div class="flex items-center gap-1 w-1/2 justify-end">
+                                <span class="text-xs">数量:</span>
+                                <input type="number" id="unitQty1" oninput="calculateFees()" class="border border-gray-400 px-1 py-0.5 rounded text-right w-16 formal-input font-bold bg-gray-50" readonly>
+                                <span class="text-xs">=</span>
+                                <span id="subtotal1" class="font-bold w-16 text-right">0</span>
+                                <span class="text-xs">円</span>
+                            </div>
+                        </div>
+
+                        <!-- Fee Item 2 -->
+                        <div class="flex items-center justify-between gap-1">
+                            <div class="flex items-center gap-1 w-1/2">
+                                <input type="text" id="unit2Name" list="units" class="border border-gray-400 px-1 py-0.5 rounded text-center w-16 text-[10px] unit-input" value="回数">
+                                <span class="text-xs">×</span>
+                                <input type="number" id="unitPrice2" oninput="calculateFees()" class="border border-gray-400 px-1 py-0.5 rounded text-right w-16 formal-input font-medium" placeholder="単価">
+                                <span class="text-xs">円</span>
+                            </div>
+                            <div class="flex items-center gap-1 w-1/2 justify-end">
+                                <span class="text-xs">数量:</span>
+                                <input type="number" id="unitQty2" oninput="calculateFees()" class="border border-gray-400 px-1 py-0.5 rounded text-right w-16 formal-input font-medium" placeholder="数量">
+                                <span class="text-xs">=</span>
+                                <span id="subtotal2" class="font-bold w-16 text-right">0</span>
+                                <span class="text-xs">円</span>
+                            </div>
+                        </div>
+
+                        <!-- Extra deductions / expenses -->
+                        <div class="grid grid-cols-2 gap-1 text-[10px] pt-1 border-t border-gray-300">
+                            <div class="flex items-center justify-between">
+                                <span>交通費等:</span>
+                                <div class="flex items-center"><input type="number" id="transCost" oninput="calculateFees()" class="border border-gray-400 w-20 text-right formal-input" value="0"><span class="ml-0.5">円</span></div>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>控除:</span>
+                                <div class="flex items-center"><input type="number" id="deduction" oninput="calculateFees()" class="border border-gray-400 w-20 text-right formal-input" value="0"><span class="ml-0.5">円</span></div>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>立替材料費:</span>
+                                <div class="flex items-center"><input type="number" id="materialCost" oninput="calculateFees()" class="border border-gray-400 w-20 text-right formal-input" value="0"><span class="ml-0.5">円</span></div>
+                            </div>
+                            <div class="flex items-center justify-between font-bold">
+                                <span>配分金合計:</span>
+                                <div><span id="distributionTotal">0</span> 円</div>
+                            </div>
+                        </div>
+
+                        <!-- Final Totals -->
+                        <div class="pt-1 border-t border-black space-y-0.5">
+                            <div class="flex justify-between items-center text-[10px]">
+                                <span>材料費: <input type="number" id="extraMat" oninput="calculateFees()" class="w-16 border border-gray-300 text-right formal-input inline-block" value="0">円</span>
+                                <span>事務費: <input type="number" id="adminFee" oninput="calculateFees()" class="w-16 border border-gray-300 text-right formal-input inline-block" value="0">円</span>
+                            </div>
+                            <div class="flex justify-between items-center bg-gray-100 p-1 font-bold text-xs border border-black">
+                                <span>合 計</span>
+                                <div><span id="grandTotal" class="text-sm">0</span> 円</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer Note on Paper -->
+        <div class="text-[9px] text-right text-gray-500 mt-2">
+            ※就業終了後、提出用（1枚目）のみを速やかに提出してください。
+        </div>
+
+    </div>
+
+    <!-- Datalist for Units -->
+    <datalist id="units">
+        <option value="時間">
+        <option value="単位">
+        <option value="回数">
+        <option value="出来高">
+        <option value="日">
+        <option value="件">
+        <option value="個">
+    </datalist>
+
+    <script>
+        // Application State & Data Structure
+        const TOTAL_DAYS = 31;
+        let isLocked = false;
+
+        // Initialize App on DOM Load
+        document.addEventListener('DOMContentLoaded', () => {
+            buildScheduleTable();
+            loadFromLocalStorage();
+            setupEventListeners();
+        });
+
+        // Build 31-day Schedule Table
+        function buildScheduleTable() {
+            const leftBody = document.getElementById('scheduleBodyLeft');
+            const rightBody = document.getElementById('scheduleBodyRight');
+            leftBody.innerHTML = '';
+            rightBody.innerHTML = '';
+
+            for (let i = 1; i <= TOTAL_DAYS; i++) {
+                const tr = document.createElement('tr');
+                tr.id = `row_${i}`;
+                tr.innerHTML = `
+                    <td class="font-bold bg-gray-50 w-8">${i}</td>
+                    <td class="w-8 text-gray-600" id="week_${i}">-</td>
+                    <td><input type="text" id="start_${i}" class="formal-input time-input" placeholder="09:00" onchange="handleTimeChange(${i})" onfocus="setActiveInput(this)"></td>
+                    <td><input type="text" id="end_${i}" class="formal-input time-input" placeholder="17:00" onchange="handleTimeChange(${i})" onfocus="setActiveInput(this)"></td>
+                    <td class="font-medium bg-gray-50/50" id="duration_${i}">0.00</td>
+                `;
+
+                if (i <= 16) {
+                    leftBody.appendChild(tr);
+                } else {
+                    rightBody.appendChild(tr);
+                }
+            }
+            updateDaysOfWeek();
+        }
+
+        // Active Input Tracking for Voice Input Mode A
+        let activeInput = null;
+        function setActiveInput(el) {
+            activeInput = el;
+        }
+
+        // Update Day of Week based on Year & Month
+        function updateDaysOfWeek() {
+            const year = parseInt(document.getElementById('reportYear').value) || 2026;
+            const month = parseInt(document.getElementById('reportMonth').value) || 12;
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const weekDays = ['日', '月', '火', '水', '木', '金', '土'];
+
+            for (let i = 1; i <= TOTAL_DAYS; i++) {
+                const row = document.getElementById(`row_${i}`);
+                const weekCell = document.getElementById(`week_${i}`);
+                const startInput = document.getElementById(`start_${i}`);
+                const endInput = document.getElementById(`end_${i}`);
+                const durationCell = document.getElementById(`duration_${i}`);
+
+                if (i <= daysInMonth) {
+                    row.classList.remove('disabled-row');
+                    startInput.disabled = false;
+                    endInput.disabled = false;
+                    const dateObj = new Date(year, month - 1, i);
+                    const dayOfWeek = weekDays[dateObj.getDay()];
+                    weekCell.innerText = dayOfWeek;
+                    if (dateObj.getDay() === 0) weekCell.className = "w-8 text-red-600 font-bold";
+                    else if (dateObj.getDay() === 6) weekCell.className = "w-8 text-blue-600 font-bold";
+                    else weekCell.className = "w-8 text-gray-600";
+                } else {
+                    row.classList.add('disabled-row');
+                    startInput.disabled = true;
+                    endInput.disabled = true;
+                    startInput.value = '';
+                    endInput.value = '';
+                    durationCell.innerText = '';
+                    weekCell.innerText = '-';
+                }
+            }
+            calculateSummary();
+        }
+
+        function updateDaysInMonth() {
+            updateDaysOfWeek();
+            autoSave();
+        }
+
+        // Time Parsing & Formatting Utility ("9時半" -> "09:30", "15" -> "15:00")
+        function parseTimeString(str) {
+            if (!str) return '';
+            str = str.replace(/：/g, ':').trim();
+            // Match HH:MM format
+            let match = str.match(/^(\d{1,2}):(\d{1,2})$/);
+            if (match) {
+                let h = parseInt(match[1]);
+                let m = parseInt(match[2]);
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }
+            // Match natural language like "9時半", "午後3時", "15時"
+            let hourMatch = str.match(/(\d{1,2})\s*時/);
+            let minMatch = str.match(/(\d{1,2})\s*分|半/);
+            if (hourMatch) {
+                let h = parseInt(hourMatch[1]);
+                let isPM = str.includes('午後') || str.includes('夕方') || str.includes('夜');
+                if (isPM && h < 12) h += 12;
+                let m = 0;
+                if (str.includes('半')) m = 30;
+                else if (minMatch) m = parseInt(minMatch[1] || 0);
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }
+            return str;
+        }
+
+        // Handle Time Entry & Break Deduction Calculation
+        function handleTimeChange(day) {
+            const startEl = document.getElementById(`start_${day}`);
+            const endEl = document.getElementById(`end_${day}`);
+            const durationEl = document.getElementById(`duration_${day}`);
+
+            startEl.value = parseTimeString(startEl.value);
+            endEl.value = parseTimeString(endEl.value);
+
+            const startTime = startEl.value;
+            const endTime = endEl.value;
+
+            if (startTime && endTime) {
+                const [sh, sm] = startTime.split(':').map(Number);
+                const [eh, em] = endTime.split(':').map(Number);
+                let startMins = sh * 60 + sm;
+                let endMins = eh * 60 + em;
+                let diffMins = endMins - startMins;
+
+                if (diffMins > 0) {
+                    let workHours = diffMins / 60;
+                    // Break Deduction Rule: 6-8 hrs -> 0.75h (45m), >8 hrs -> 1.0h
+                    let breakHours = 0;
+                    if (workHours > 8) {
+                        breakHours = 1.0;
+                    } else if (workHours >= 6) {
+                        breakHours = 0.75;
+                    }
+                    let netHours = Math.max(0, workHours - breakHours);
+                    durationEl.innerText = netHours.toFixed(2);
+                } else {
+                    durationEl.innerText = "0.00";
+                }
+            } else {
+                durationEl.innerText = "0.00";
+            }
+
+            calculateSummary();
+            autoSave();
+        }
+
+        // Calculate Totals and Link to Fee Quantity
+        function calculateSummary() {
+            let totalDaysCount = 0;
+            let totalHoursSum = 0;
+            const year = parseInt(document.getElementById('reportYear').value) || 2026;
+            const month = parseInt(document.getElementById('reportMonth').value) || 12;
+            const daysInMonth = new Date(year, month, 0).getDate();
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const start = document.getElementById(`start_${i}`).value;
+                const end = document.getElementById(`end_${i}`).value;
+                const dur = parseFloat(document.getElementById(`duration_${i}`).innerText) || 0;
+
+                if (start && end) {
+                    totalDaysCount++;
+                    totalHoursSum += dur;
+                }
+            }
+
+            document.getElementById('totalDays').innerText = totalDaysCount;
+            document.getElementById('totalHours').innerText = totalHoursSum.toFixed(2);
+
+            // Automatic Quantity Linking for Item 1
+            const unit1Name = document.getElementById('unit1Name').value;
+            const qty1El = document.getElementById('unitQty1');
+            if (unit1Name.includes('時間')) {
+                qty1El.value = totalHoursSum.toFixed(2);
+            } else if (unit1Name.includes('日') || unit1Name.includes('回')) {
+                qty1El.value = totalDaysCount;
+            } else {
+                if (!qty1El.value) qty1El.value = totalDaysCount;
+            }
+
+            calculateFees();
+        }
+
+        // Calculate Fees and Grand Total
+        function calculateFees() {
+            const price1 = parseFloat(document.getElementById('unitPrice1').value) || 0;
+            const qty1 = parseFloat(document.getElementById('unitQty1').value) || 0;
+            const sub1 = Math.round(price1 * qty1);
+            document.getElementById('subtotal1').innerText = sub1.toLocaleString();
+
+            const price2 = parseFloat(document.getElementById('unitPrice2').value) || 0;
+            const qty2 = parseFloat(document.getElementById('unitQty2').value) || 0;
+            const sub2 = Math.round(price2 * qty2);
+            document.getElementById('subtotal2').innerText = sub2.toLocaleString();
+
+            const trans = parseFloat(document.getElementById('transCost').value) || 0;
+            const ded = parseFloat(document.getElementById('deduction').value) || 0;
+            const mat = parseFloat(document.getElementById('materialCost').value) || 0;
+
+            const distTotal = sub1 + sub2 + trans - ded + mat;
+            document.getElementById('distributionTotal').innerText = distTotal.toLocaleString();
+
+            const extraMat = parseFloat(document.getElementById('extraMat').value) || 0;
+            const adminFee = parseFloat(document.getElementById('adminFee').value) || 0;
+
+            const grandTotal = distTotal + extraMat + adminFee;
+            document.getElementById('grandTotal').innerText = grandTotal.toLocaleString();
+
+            autoSave();
+        }
+
+        // Voice Recognition (Web Speech API) Implementation
+        let recognition = null;
+        let isListening = false;
+
+        function toggleVoiceInput() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                alert('お使いのブラウザは音声入力に対応していません。Google Chrome等をご利用ください。');
+                return;
+            }
+
+            if (isListening) {
+                stopVoiceInput();
+                return;
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            const toast = document.getElementById('voiceToast');
+            const statusText = document.getElementById('voiceStatusText');
+            const transcriptEl = document.getElementById('voiceTranscript');
+            const btn = document.getElementById('voiceBtn');
+            const btnText = document.getElementById('voiceBtnText');
+
+            toast.classList.remove('hidden');
+            statusText.innerText = "音声入力中... 話してください";
+            btn.classList.remove('bg-red-600', 'hover:bg-red-700');
+            btn.classList.add('bg-amber-600', 'hover:bg-amber-700', 'animate-pulse');
+            btnText.innerText = "停止";
+            isListening = true;
+
+            recognition.onresult = (event) => {
+                const speechText = event.results[0][0].transcript;
+                transcriptEl.innerText = `「${speechText}」`;
+                processVoiceCommand(speechText);
+            };
+
+            recognition.onerror = (event) => {
+                statusText.innerText = "音声認識エラー: " + event.error;
+            };
+
+            recognition.onend = () => {
+                stopVoiceInput();
+            };
+
+            recognition.start();
+        }
+
+        function stopVoiceInput() {
+            if (recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
+            isListening = false;
+            const btn = document.getElementById('voiceBtn');
+            const btnText = document.getElementById('voiceBtnText');
+            const toast = document.getElementById('voiceToast');
+            btn.classList.remove('bg-amber-600', 'hover:bg-amber-700', 'animate-pulse');
+            btn.classList.add('bg-red-600', 'hover:bg-red-700');
+            btnText.innerText = "音声入力";
+            setTimeout(() => { toast.classList.add('hidden'); }, 4000);
+        }
+
+        // Smart Voice Command Parser (Mode A, Mode B, Mode C)
+        function processVoiceCommand(text) {
+            // Mode A: Specific Field Targeted Input (if activeInput is focused)
+            if (activeInput && (activeInput.id.startsWith('start_') || activeInput.id.startsWith('end_'))) {
+                let parsedTime = parseTimeString(text);
+                if (parsedTime) {
+                    activeInput.value = parsedTime;
+                    const dayNum = activeInput.id.split('_')[1];
+                    handleTimeChange(dayNum);
+                    showToastFeedback(`[モードA] 日付${dayNum}に ${parsedTime} を設定しました`);
+                    return;
+                }
+            }
+
+            // Mode B: Date-specified Batch Input (e.g., "15日 9時 17時" or "10日のデータ消して")
+            let dayMatch = text.match(/(\d{1,2})\s*日/);
+            if (dayMatch) {
+                let dayNum = parseInt(dayMatch[1]);
+                if (dayNum >= 1 && dayNum <= 31) {
+                    if (text.includes('消す') || text.includes('クリア') || text.includes('削除')) {
+                        document.getElementById(`start_${dayNum}`).value = '';
+                        document.getElementById(`end_${dayNum}`).value = '';
+                        handleTimeChange(dayNum);
+                        showToastFeedback(`[モードB] ${dayNum}日のデータをクリアしました`);
+                        return;
+                    }
+
+                    // Extract times from text
+                    let times = [];
+                    // Find all time patterns in speech
+                    let timeRegex = /(\d{1,2}時半?|\d{1,2}:\d{2})/g;
+                    let match;
+                    while ((match = timeRegex.exec(text)) !== null) {
+                        let t = parseTimeString(match[0]);
+                        if (t) times.push(t);
+                    }
+
+                    if (times.length >= 2) {
+                        document.getElementById(`start_${dayNum}`).value = times[0];
+                        document.getElementById(`end_${dayNum}`).value = times[1];
+                        handleTimeChange(dayNum);
+                        showToastFeedback(`[モードB] ${dayNum}日: 開始 ${times[0]} / 終了 ${times[1]} を設定しました`);
+                        return;
+                    } else if (times.length === 1) {
+                        document.getElementById(`start_${dayNum}`).value = times[0];
+                        handleTimeChange(dayNum);
+                        showToastFeedback(`[モードB] ${dayNum}日: 開始 ${times[0]} を設定しました`);
+                        return;
+                    }
+                }
+            }
+
+            // Mode C: Work Content / Notes Append
+            const workArea = document.getElementById('workContent');
+            workArea.value += (workArea.value ? "\n" : "") + text;
+            showToastFeedback(`[モードC] 作業内容欄に追記しました`);
+            autoSave();
+        }
+
+        function showToastFeedback(msg) {
+            document.getElementById('voiceStatusText').innerText = msg;
+        }
+
+        // Lock Flag Control & Event Listeners setup
+        function setupEventListeners() {
+            const lockCheckbox = document.getElementById('lockFlagCheckbox');
+            lockCheckbox.addEventListener('change', (e) => {
+                isLocked = e.target.checked;
+                applyLockState();
+                autoSave();
+            });
+
+            // Auto-save triggers on input change
+            const inputs = document.querySelectorAll('input, textarea, select');
+            inputs.forEach(input => {
+                if (!input.id.startsWith('th_col')) {
+                    input.addEventListener('input', autoSave);
+                    input.addEventListener('change', autoSave);
+                }
+            });
+
+            // Header edit listeners
+            document.querySelectorAll('.editable-header').forEach(el => {
+                el.addEventListener('input', autoSave);
+            });
+        }
+
+        function applyLockState() {
+            const lockCheckbox = document.getElementById('lockFlagCheckbox');
+            lockCheckbox.checked = isLocked;
+
+            // Lock/Unlock table headers
+            document.querySelectorAll('.editable-header').forEach(th => {
+                th.contentEditable = !isLocked;
+                if (isLocked) {
+                    th.classList.add('bg-gray-100', 'cursor-not-allowed');
+                } else {
+                    th.classList.remove('bg-gray-100', 'cursor-not-allowed');
+                }
+            });
+
+            // Lock/Unlock unit inputs
+            document.querySelectorAll('.unit-input').forEach(input => {
+                input.readOnly = isLocked;
+                if (isLocked) {
+                    input.classList.add('bg-gray-100');
+                } else {
+                    input.classList.remove('bg-gray-100');
+                }
+            });
+        }
+
+        // LocalStorage Auto-Save & Load
+        const STORAGE_KEY = 'machida_sjc_work_report_data_v1';
+
+        function autoSave() {
+            const data = collectFormData();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        }
+
+        function collectFormData() {
+            let scheduleData = {};
+            for (let i = 1; i <= TOTAL_DAYS; i++) {
+                scheduleData[i] = {
+                    start: document.getElementById(`start_${i}`).value,
+                    end: document.getElementById(`end_${i}`).value
+                };
+            }
+
+            return {
+                year: document.getElementById('reportYear').value,
+                month: document.getElementById('reportMonth').value,
+                workContent: document.getElementById('workContent').value,
+                contractName: document.getElementById('contractName').value,
+                contractNo: document.getElementById('contractNo').value,
+                clientName: document.getElementById('clientName').value,
+                memberNo: document.getElementById('memberNo').value,
+                memberName: document.getElementById('memberName').value,
+                unit1Name: document.getElementById('unit1Name').value,
+                unitPrice1: document.getElementById('unitPrice1').value,
+                unitQty1: document.getElementById('unitQty1').value,
+                unit2Name: document.getElementById('unit2Name').value,
+                unitPrice2: document.getElementById('unitPrice2').value,
+                unitQty2: document.getElementById('unitQty2').value,
+                transCost: document.getElementById('transCost').value,
+                deduction: document.getElementById('deduction').value,
+                materialCost: document.getElementById('materialCost').value,
+                extraMat: document.getElementById('extraMat').value,
+                adminFee: document.getElementById('adminFee').value,
+                th_colA_1: document.getElementById('th_colA_1').innerText,
+                th_colB_1: document.getElementById('th_colB_1').innerText,
+                th_colC_1: document.getElementById('th_colC_1').innerText,
+                th_colA_2: document.getElementById('th_colA_2').innerText,
+                th_colB_2: document.getElementById('th_colB_2').innerText,
+                th_colC_2: document.getElementById('th_colC_2').innerText,
+                isLocked: isLocked,
+                schedule: scheduleData
+            };
+        }
+
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    restoreFormData(data);
+                } catch(e) {
+                    console.error("Failed to load saved data", e);
+                }
+            }
+        }
+
+        function restoreFormData(data) {
+            if (!data) return;
+            document.getElementById('reportYear').value = data.year || '2026';
+            document.getElementById('reportMonth').value = data.month || '12';
+            document.getElementById('workContent').value = data.workContent || '';
+            document.getElementById('contractName').value = data.contractName || '';
+            document.getElementById('contractNo').value = data.contractNo || '';
+            document.getElementById('clientName').value = data.clientName || '';
+            document.getElementById('memberNo').value = data.memberNo || '';
+            document.getElementById('memberName').value = data.memberName || '';
+            document.getElementById('unit1Name').value = data.unit1Name || '時間';
+            document.getElementById('unitPrice1').value = data.unitPrice1 || '';
+            document.getElementById('unitQty1').value = data.unitQty1 || '';
+            document.getElementById('unit2Name').value = data.unit2Name || '回数';
+            document.getElementById('unitPrice2').value = data.unitPrice2 || '';
+            document.getElementById('unitQty2').value = data.unitQty2 || '';
+            document.getElementById('transCost').value = data.transCost || '0';
+            document.getElementById('deduction').value = data.deduction || '0';
+            document.getElementById('materialCost').value = data.materialCost || '0';
+            document.getElementById('extraMat').value = data.extraMat || '0';
+            document.getElementById('adminFee').value = data.adminFee || '0';
+
+            if (data.th_colA_1) document.getElementById('th_colA_1').innerText = data.th_colA_1;
+            if (data.th_colB_1) document.getElementById('th_colB_1').innerText = data.th_colB_1;
+            if (data.th_colC_1) document.getElementById('th_colC_1').innerText = data.th_colC_1;
+            if (data.th_colA_2) document.getElementById('th_colA_2').innerText = data.th_colA_2;
+            if (data.th_colB_2) document.getElementById('th_colB_2').innerText = data.th_colB_2;
+            if (data.th_colC_2) document.getElementById('th_colC_2').innerText = data.th_colC_2;
+
+            isLocked = !!data.isLocked;
+            applyLockState();
+
+            updateDaysOfWeek();
+
+            if (data.schedule) {
+                for (let i = 1; i <= TOTAL_DAYS; i++) {
+                    if (data.schedule[i]) {
+                        const startEl = document.getElementById(`start_${i}`);
+                        const endEl = document.getElementById(`end_${i}`);
+                        if (startEl && !startEl.disabled) startEl.value = data.schedule[i].start || '';
+                        if (endEl && !endEl.disabled) endEl.value = data.schedule[i].end || '';
+                        handleTimeChange(i);
+                    }
+                }
+            }
+            calculateFees();
+        }
+
+        // JSON Export
+        function exportJSON() {
+            const data = collectFormData();
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `就業報告書_${data.year}年${data.month}月_${data.memberName || '会員'}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // JSON Import
+        function importJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    restoreFormData(data);
+                    autoSave();
+                    alert('就業報告書のデータを正常に読み込みました。');
+                } catch(err) {
+                    alert('ファイルの読み込みに失敗しました。正しいJSONファイルを選択してください。');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // Clear LocalStorage & Reload
+        function clearLocalStorage() {
+            if (confirm('入力されたすべてのデータを消去して初期化しますか？')) {
+                localStorage.removeItem(STORAGE_KEY);
+                location.reload();
+            }
+        }
+
+        // PDF Export using html2pdf.js
+        function exportPDF() {
+            const element = document.getElementById('reportPaper');
+            const memberName = document.getElementById('memberName').value || '会員';
+            const year = document.getElementById('reportYear').value;
+            const month = document.getElementById('reportMonth').value;
+            
+            const opt = {
+                margin:       0,
+                filename:     `就業報告書_${year}年${month}月_${memberName}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true, logging: false },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            // Temporarily remove shadow for clean PDF output
+            element.classList.remove('shadow-md');
+            html2pdf().from(element).set(opt).save().then(() => {
+                element.classList.add('shadow-md');
+            });
+        }
+    </script>
+</body>
+</html>
